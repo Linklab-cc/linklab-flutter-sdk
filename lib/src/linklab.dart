@@ -12,6 +12,7 @@ class LinkLabData {
   final String? appStoreId;
   final String domainType;
   final String domain;
+  final Map<String, String>? parameters;
 
   LinkLabData({
     required this.id,
@@ -24,9 +25,21 @@ class LinkLabData {
     this.appStoreId,
     required this.domainType,
     required this.domain,
+    this.parameters,
   });
 
   factory LinkLabData.fromMap(Map<dynamic, dynamic> map) {
+    // Handle parameters coming from iOS SDK
+    Map<String, String>? params;
+    if (map['parameters'] != null) {
+      if (map['parameters'] is Map) {
+        params = Map<String, String>.from(
+          (map['parameters'] as Map).map((key, value) => 
+            MapEntry(key.toString(), value.toString()))
+        );
+      }
+    }
+    
     return LinkLabData(
       id: map['id'] as String,
       fullLink: map['fullLink'] as String,
@@ -38,6 +51,7 @@ class LinkLabData {
       appStoreId: map['appStoreId'] as String?,
       domainType: map['domainType'] as String,
       domain: map['domain'] as String,
+      parameters: params,
     );
   }
 
@@ -53,6 +67,7 @@ class LinkLabData {
       'appStoreId': appStoreId,
       'domainType': domainType,
       'domain': domain,
+      'parameters': parameters,
     };
   }
 }

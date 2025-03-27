@@ -1,6 +1,6 @@
 import Flutter
 import UIKit
-import Linklab
+import LinkLabSDK
 
 @available(iOS 14.3, *)
 public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
@@ -24,7 +24,7 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
   }
   
   private func handleUniversalLink(_ url: URL) -> Bool {
-    return Linklab.shared.handleUniversalLink(url)
+    return LinkLabSDK.shared.handleUniversalLink(url)
   }
   
   private func convertLinkDestinationToMap(_ destination: LinkDestination?) -> [String: Any]? {
@@ -44,20 +44,12 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
     switch call.method {
-    case "configure":
-      guard let args = call.arguments as? [String: Any],
-            let apiKey = args["apiKey"] as? String else {
-        result(FlutterError(code: "INVALID_ARGS", message: "Missing API key", details: nil))
-        return
-      }
+    case "init":
+      let config = Configuration(
+        debugLoggingEnabled: true
+      )
       
-      if let apiUrl = URL(string: "https://api.linklab.cc") {
-        let config = Configuration(
-          attributionServiceURL: apiUrl,
-          debugLoggingEnabled: true
-        )
-        
-        Linklab.shared.initialize(with: config) { [weak self] destination in
+      LinkLabSDK.shared.initialize(with: config) { [weak self] destination in
           self?.linkDestination = destination
           
           if let destination = destination, let channel = self?.channel {
@@ -91,7 +83,7 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
         return
       }
       
-      if handleUniversalLink(url) {
+      if handleUniversalLink(url) { //TODO check how do we send full link details to external app?
         result(true)
       } else {
         result(false)

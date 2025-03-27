@@ -60,14 +60,8 @@ class LinkLabFlutterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, New
 
   override fun onMethodCall(@NonNull call: MethodCall, @NonNull result: Result) {
     when (call.method) {
-      "configure" -> {
-        val apiKey = call.argument<String>("apiKey")
-        if (apiKey.isNullOrEmpty()) {
-          result.error("INVALID_API_KEY", "API key cannot be null or empty", null)
-          return
-        }
-        
-        linkLab?.configure(apiKey)
+      "init" -> {
+        linkLab?.init()
         result.success(true)
       }
       "getInitialLink" -> {

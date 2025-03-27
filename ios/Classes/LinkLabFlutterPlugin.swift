@@ -24,7 +24,7 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
   }
   
   private func handleUniversalLink(_ url: URL) -> Bool {
-    return LinkLabSDK.shared.handleUniversalLink(url)
+    return Linklab.shared.handleUniversalLink(url)
   }
   
   private func convertLinkDestinationToMap(_ destination: LinkDestination?) -> [String: Any]? {
@@ -49,24 +49,21 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
         debugLoggingEnabled: true
       )
       
-      LinkLabSDK.shared.initialize(with: config) { [weak self] destination in
-          self?.linkDestination = destination
-          
-          if let destination = destination, let channel = self?.channel {
-            let linkData = self?.convertLinkDestinationToMap(destination)
-            channel.invokeMethod("onDynamicLinkReceived", arguments: linkData)
-          }
-          
-          if self?.pendingInitialLinkRequest == true {
-            self?.pendingInitialLinkRequest = false
-            result(self?.convertLinkDestinationToMap(destination))
-          }
+      Linklab.shared.initialize(with: config) { [weak self] destination in
+        self?.linkDestination = destination
+
+        if let destination = destination, let channel = self?.channel {
+          let linkData = self?.convertLinkDestinationToMap(destination)
+          channel.invokeMethod("onDynamicLinkReceived", arguments: linkData)
         }
-        result(true)
-      } else {
-        result(FlutterError(code: "CONFIGURATION_ERROR", message: "Invalid API URL", details: nil))
+
+        if self?.pendingInitialLinkRequest == true {
+          self?.pendingInitialLinkRequest = false
+          result(self?.convertLinkDestinationToMap(destination))
+        }
       }
-      
+      result(true)
+
     case "getInitialLink":
       if let linkDestination = self.linkDestination {
         result(convertLinkDestinationToMap(linkDestination))
@@ -74,7 +71,7 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
         pendingInitialLinkRequest = true
         // Will return result when deep link is received
       }
-      
+
     case "getDynamicLink":
       guard let args = call.arguments as? [String: Any],
             let shortLink = args["shortLink"] as? String,
@@ -82,13 +79,13 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
         result(FlutterError(code: "INVALID_ARGS", message: "Invalid URL", details: nil))
         return
       }
-      
+
       if handleUniversalLink(url) { //TODO check how do we send full link details to external app?
         result(true)
       } else {
         result(false)
       }
-      
+
     case "isLinkLabLink":
       guard let args = call.arguments as? [String: Any],
             let link = args["link"] as? String,
@@ -96,14 +93,14 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
         result(false)
         return
       }
-      
+
       // Simple check if domain is linklab domain
       if url.host?.contains("linklab.cc") == true {
         result(true)
       } else {
         result(false)
       }
-      
+
     default:
       result(FlutterMethodNotImplemented)
     }

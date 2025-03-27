@@ -1,6 +1,6 @@
 import Flutter
 import UIKit
-import LinkLabSDK
+import Linklab
 
 @available(iOS 14.3, *)
 public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {

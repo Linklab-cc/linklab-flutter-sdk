@@ -6,7 +6,6 @@ void main() async {
   
   final linkLab = LinkLab();
   await linkLab.initialize();
-  await linkLab.configure('your_api_key_here');
   
   runApp(const MyApp());
 }

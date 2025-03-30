@@ -94,6 +94,7 @@ class LinkLab {
   
   Future<void> initialize() async {
     _channel.setMethodCallHandler(_handleMethod);
+    await _channel.invokeMethod('init');
   }
   
   Future<dynamic> _handleMethod(MethodCall call) async {
@@ -110,10 +111,6 @@ class LinkLab {
         _onError?.call(message, stackTrace);
         break;
     }
-  }
-  
-  Future<void> configure(String apiKey) async {
-    await _channel.invokeMethod('configure', {'apiKey': apiKey});
   }
   
   void setLinkListener(LinkLabLinkCallback onLink) {

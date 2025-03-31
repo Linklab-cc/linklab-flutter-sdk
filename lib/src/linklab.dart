@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:developer';
+
 import 'package:flutter/services.dart';
 
 class LinkLabData {
@@ -34,12 +36,12 @@ class LinkLabData {
     if (map['parameters'] != null) {
       if (map['parameters'] is Map) {
         params = Map<String, String>.from(
-          (map['parameters'] as Map).map((key, value) => 
-            MapEntry(key.toString(), value.toString()))
-        );
+            (map['parameters'] as Map).map((key, value) => MapEntry(key.toString(), value.toString())));
       }
     }
-    
+
+    _log('LinkLabData.fromMap: ${map}'); // Add debug log
+
     return LinkLabData(
       id: map['id'] as String,
       fullLink: map['fullLink'] as String,
@@ -70,6 +72,11 @@ class LinkLabData {
       'parameters': parameters,
     };
   }
+
+  @override
+  String toString() {
+    return 'LinkLabData{id: $id, fullLink: $fullLink, domain: $domain, parameters: $parameters}';
+  }
 }
 
 typedef LinkLabLinkCallback = void Function(LinkLabData data);
@@ -77,61 +84,122 @@ typedef LinkLabErrorCallback = void Function(String message, String? stackTrace)
 
 class LinkLab {
   static final LinkLab _instance = LinkLab._internal();
-  
+
   factory LinkLab() => _instance;
-  
-  LinkLab._internal();
-  
+
+  LinkLab._internal() {
+    // Set up method call handler immediately in constructor
+    _channel.setMethodCallHandler(_handleMethod);
+  }
+
   final MethodChannel _channel = const MethodChannel('cc.linklab.flutter/linklab');
-  
-  final StreamController<LinkLabData> _dynamicLinkStream = 
-      StreamController<LinkLabData>.broadcast();
-  
+
+  final StreamController<LinkLabData> _dynamicLinkStream = StreamController<LinkLabData>.broadcast();
+
   Stream<LinkLabData> get onLink => _dynamicLinkStream.stream;
-  
+
   LinkLabLinkCallback? _onLink;
   LinkLabErrorCallback? _onError;
-  
-  Future<void> initialize() async {
-    _channel.setMethodCallHandler(_handleMethod);
-    await _channel.invokeMethod('init');
+
+  bool _isInitialized = false;
+  Completer<bool>? _initCompleter;
+
+  Future<bool> initialize() async {
+    if (_isInitialized) {
+      return true;
+    }
+
+    if (_initCompleter != null) {
+      return _initCompleter!.future;
+    }
+
+    _initCompleter = Completer<bool>();
+
+    _log('LinkLab - Initializing plugin');
+    try {
+      final result = await _channel.invokeMethod<bool>('init') ?? false;
+      _log('LinkLab - Init result: $result');
+      _isInitialized = result;
+      _initCompleter!.complete(result);
+      return result;
+    } catch (e) {
+      _log('LinkLab - Init error: $e');
+      _initCompleter!.complete(false);
+      return false;
+    }
   }
-  
+
   Future<dynamic> _handleMethod(MethodCall call) async {
+    _log('LinkLab - Received method call: ${call.method}');
     switch (call.method) {
       case 'onDynamicLinkReceived':
-        final data = LinkLabData.fromMap(call.arguments);
-        _dynamicLinkStream.add(data);
-        _onLink?.call(data);
+        _log('LinkLab - onDynamicLinkReceived with args: ${call.arguments}');
+        if (call.arguments != null) {
+          try {
+            final data = LinkLabData.fromMap(call.arguments);
+            _log('LinkLab - Parsed link data: $data');
+            _dynamicLinkStream.add(data);
+            _onLink?.call(data);
+          } catch (e) {
+            _log('LinkLab - Error parsing link data: $e');
+          }
+        } else {
+          _log('LinkLab - Received null arguments for dynamic link');
+        }
         break;
       case 'onError':
         final Map<dynamic, dynamic> args = call.arguments;
         final message = args['message'] as String;
         final stackTrace = args['stackTrace'] as String?;
+        _log('LinkLab - Error: $message');
         _onError?.call(message, stackTrace);
         break;
     }
   }
-  
+
   void setLinkListener(LinkLabLinkCallback onLink) {
+    _log('LinkLab - Setting link listener');
     _onLink = onLink;
   }
-  
+
   void setErrorListener(LinkLabErrorCallback onError) {
     _onError = onError;
   }
-  
+
   Future<bool> isLinkLabLink(String link) async {
+    await initialize();
     return await _channel.invokeMethod('isLinkLabLink', {'link': link}) ?? false;
   }
-  
+
   Future<void> getDynamicLink(String shortLink) async {
+    await initialize();
     await _channel.invokeMethod('getDynamicLink', {'shortLink': shortLink});
   }
-  
+
   Future<LinkLabData?> getInitialLink() async {
-    final data = await _channel.invokeMethod('getInitialLink');
-    if (data == null) return null;
-    return LinkLabData.fromMap(data);
+    await initialize();
+    _log('LinkLab - Getting initial link');
+    try {
+      final data = await _channel.invokeMethod('getInitialLink');
+      _log('LinkLab - Initial link data: $data');
+      if (data == null) return null;
+      return LinkLabData.fromMap(data);
+    } catch (e) {
+      _log('LinkLab - Error getting initial link: $e');
+      return null;
+    }
   }
+}
+
+void _log(
+  Object? message, {
+  Object? error,
+  StackTrace? stackTrace,
+}) {
+  return log(
+    '$message',
+    name: 'LinkLab',
+    error: error,
+    stackTrace: stackTrace,
+  );
 }

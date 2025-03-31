@@ -42,7 +42,7 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
       return nil
     }
 
-    let map = [
+   let map: [String: Any] = [
       "id": destination.route,
       "fullLink": destination.route,
       "createdAt": Int(Date().timeIntervalSince1970 * 1000),

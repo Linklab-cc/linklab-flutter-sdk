@@ -133,7 +133,7 @@ class LinkLab {
     _log('LinkLab - Received method call: ${call.method}');
     switch (call.method) {
       case 'onDynamicLinkReceived':
-        _log('LinkLab - onDynamicLinkReceived with args: ${call.arguments}');
+        _log('onDynamicLinkReceived with args: ${call.arguments}');
         if (call.arguments != null) {
           try {
             final data = LinkLabData.fromMap(call.arguments);
@@ -141,10 +141,10 @@ class LinkLab {
             _dynamicLinkStream.add(data);
             _onLink?.call(data);
           } catch (e) {
-            _log('LinkLab - Error parsing link data: $e');
+            _log('Error parsing link data:', error: e);
           }
         } else {
-          _log('LinkLab - Received null arguments for dynamic link');
+          _log('Received null arguments for dynamic link');
         }
         break;
       case 'onError':
@@ -158,7 +158,7 @@ class LinkLab {
   }
 
   void setLinkListener(LinkLabLinkCallback onLink) {
-    _log('LinkLab - Setting link listener');
+    _log('Setting link listener');
     _onLink = onLink;
   }
 
@@ -178,10 +178,10 @@ class LinkLab {
 
   Future<LinkLabData?> getInitialLink() async {
     await initialize();
-    _log('LinkLab - Getting initial link');
+    _log('Getting initial link');
     try {
       final data = await _channel.invokeMethod('getInitialLink');
-      _log('LinkLab - Initial link data: $data');
+      _log('Initial link data: $data');
       if (data == null) return null;
       return LinkLabData.fromMap(data);
     } catch (e) {

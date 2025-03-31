@@ -9,6 +9,7 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
   private var pendingInitialLinkRequest = false
   private var initialLinkResult: FlutterResult?
   private var isInitialized = false
+  private var pendingUniversalLink: URL? = nil
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     NSLog("LinkLabFlutterPlugin - register called")
@@ -38,14 +39,10 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
 
   private func handleUniversalLink(_ url: URL) -> Bool {
     NSLog("LinkLabFlutterPlugin - handleUniversalLink: \(url.absoluteString)")
-    // If we're not initialized yet, store the URL for later
+    // If we're not initialized yet, store the URL for later processing
     if !isInitialized {
-      NSLog("LinkLabFlutterPlugin - Not initialized yet, will process link later")
-      // We'll process this URL after initialization
-      DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
-        NSLog("LinkLabFlutterPlugin - Processing delayed universal link")
-        _ = self?.handleUniversalLink(url)
-      }
+      NSLog("LinkLabFlutterPlugin - Not initialized yet, storing URL for later processing")
+      pendingUniversalLink = url
       return true
     }
 
@@ -101,6 +98,13 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
 
         self.isInitialized = true
         self.linkDestination = destination
+
+        // Process any pending universal link
+        if let pendingUrl = self.pendingUniversalLink {
+          NSLog("LinkLabFlutterPlugin - Processing stored universal link after initialization")
+          self.pendingUniversalLink = nil
+          _ = self.handleUniversalLink(pendingUrl)
+        }
 
         if let destination = destination, let channel = self.channel {
           NSLog("LinkLabFlutterPlugin - destination received in init callback: \(destination.route)")

@@ -61,11 +61,7 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
       return nil
     }
 
-    // Ensure parameters is never nil
-    var parameters: [String: String] = [:]
-    if let destinationParams = destination.parameters {
-      parameters = destinationParams
-    }
+    let parameters: [String: String] = destination.parameters ?? [:]
 
     let map: [String: Any] = [
       "id": destination.route,

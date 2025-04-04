@@ -7,7 +7,10 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
   private var channel: FlutterMethodChannel?
   private var linkDestination: LinkDestination?
   private var pendingInitialLinkRequest = false
-  
+  private var initialLinkResult: FlutterResult?
+  private var isInitialized = false
+  private var pendingUniversalLink: URL? = nil
+
   public static func register(with registrar: FlutterPluginRegistrar) {
     NSLog("LinkLabFlutterPlugin - register called")
     let channel = FlutterMethodChannel(name: "cc.linklab.flutter/linklab", binaryMessenger: registrar.messenger())
@@ -28,8 +31,21 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
     return false
   }
 
+  // Add support for handling URL schemes
+  public func application(_ app: UIApplication, open url: URL, options: [UIApplication.OpenURLOptionsKey: Any] = [:]) -> Bool {
+    NSLog("LinkLabFlutterPlugin - application open URL: \(url.absoluteString)")
+    return handleUniversalLink(url)
+  }
+
   private func handleUniversalLink(_ url: URL) -> Bool {
     NSLog("LinkLabFlutterPlugin - handleUniversalLink: \(url.absoluteString)")
+    // If we're not initialized yet, store the URL for later processing
+    if !isInitialized {
+      NSLog("LinkLabFlutterPlugin - Not initialized yet, storing URL for later processing")
+      pendingUniversalLink = url
+      return true
+    }
+
     let result = Linklab.shared.handleUniversalLink(url)
     NSLog("LinkLabFlutterPlugin - handleUniversalLink result: \(result)")
     return result
@@ -42,17 +58,20 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
       return nil
     }
 
-   let map: [String: Any] = [
+    let parameters: [String: String] = destination.parameters ?? [:]
+
+    let map: [String: Any] = [
       "id": destination.route,
-      "fullLink": destination.route,
+      "fullLink": "https://potje.linklab.cc/\(destination.route)", // Reconstruct full link
       "createdAt": Int(Date().timeIntervalSince1970 * 1000),
       "updatedAt": Int(Date().timeIntervalSince1970 * 1000),
       "userId": "",
       "domainType": "custom",
-      "domain": destination.route,
-      "parameters": destination.parameters
+      "domain": "potje.linklab.cc", // Set actual domain
+      "parameters": parameters
     ]
     NSLog("LinkLabFlutterPlugin - convertLinkDestinationToMap: created map with route: \(destination.route)")
+    NSLog("LinkLabFlutterPlugin - Map contents: \(map)")
     return map
   }
 
@@ -61,29 +80,56 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
     switch call.method {
     case "init":
       NSLog("LinkLabFlutterPlugin - initializing with config")
+
+      // Only initialize once
+      if isInitialized {
+        NSLog("LinkLabFlutterPlugin - already initialized, returning true")
+        result(true)
+        return
+      }
+
       let config = Configuration(
         debugLoggingEnabled: true
       )
 
       Linklab.shared.initialize(with: config) { [weak self] destination in
         NSLog("LinkLabFlutterPlugin - initialize callback received")
-        self?.linkDestination = destination
+        guard let self = self else { return }
 
-        if let destination = destination, let channel = self?.channel {
+        self.isInitialized = true
+        self.linkDestination = destination
+
+        // Process any pending universal link
+        if let pendingUrl = self.pendingUniversalLink {
+          NSLog("LinkLabFlutterPlugin - Processing stored universal link after initialization")
+          self.pendingUniversalLink = nil
+          _ = self.handleUniversalLink(pendingUrl)
+        }
+
+        if let destination = destination, let channel = self.channel {
           NSLog("LinkLabFlutterPlugin - destination received in init callback: \(destination.route)")
-          let linkData = self?.convertLinkDestinationToMap(destination)
+          let linkData = self.convertLinkDestinationToMap(destination)
+
+          // Send via method channel
           NSLog("LinkLabFlutterPlugin - invoking onDynamicLinkReceived")
-          channel.invokeMethod("onDynamicLinkReceived", arguments: linkData)
+          DispatchQueue.main.async {
+            channel.invokeMethod("onDynamicLinkReceived", arguments: linkData)
+          }
         } else {
           NSLog("LinkLabFlutterPlugin - no destination or channel in init callback")
         }
 
-        if self?.pendingInitialLinkRequest == true {
+        // Resolve pending initial link request if there is one
+        if self.pendingInitialLinkRequest {
           NSLog("LinkLabFlutterPlugin - resolving pending initial link request")
-          self?.pendingInitialLinkRequest = false
-          result(self?.convertLinkDestinationToMap(destination))
+          self.pendingInitialLinkRequest = false
+          DispatchQueue.main.async {
+            self.initialLinkResult?(self.convertLinkDestinationToMap(destination))
+            self.initialLinkResult = nil
+          }
         }
       }
+
       NSLog("LinkLabFlutterPlugin - init completed, returning true")
       result(true)
 
@@ -91,11 +137,24 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
       NSLog("LinkLabFlutterPlugin - getInitialLink called")
       if let linkDestination = self.linkDestination {
         NSLog("LinkLabFlutterPlugin - getInitialLink: returning cached destination: \(linkDestination.route)")
-        result(convertLinkDestinationToMap(linkDestination))
+        let data = convertLinkDestinationToMap(linkDestination)
+        NSLog("LinkLabFlutterPlugin - getInitialLink result: \(String(describing: data))")
+        result(data)
+      } else if isInitialized {
+        NSLog("LinkLabFlutterPlugin - getInitialLink: no cached destination, returning nil")
+        result(nil)
       } else {
-        NSLog("LinkLabFlutterPlugin - getInitialLink: no cached destination, setting pendingInitialLinkRequest")
+        NSLog("LinkLabFlutterPlugin - getInitialLink: not initialized yet, setting pendingInitialLinkRequest")
         pendingInitialLinkRequest = true
-        // Will return result when deep link is received
+        initialLinkResult = result
+        // Will return result when deep link is received or timeout after 5 seconds
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5.0) { [weak self] in
+          guard let self = self, self.pendingInitialLinkRequest else { return }
+          NSLog("LinkLabFlutterPlugin - getInitialLink: timed out after 5 seconds")
+          self.pendingInitialLinkRequest = false
+          self.initialLinkResult?(nil)
+          self.initialLinkResult = nil
+        }
       }
 
     case "getDynamicLink":
@@ -109,7 +168,7 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
       }
 
       NSLog("LinkLabFlutterPlugin - getDynamicLink: processing URL: \(url.absoluteString)")
-      if handleUniversalLink(url) { //TODO check how do we send full link details to external app?
+      if handleUniversalLink(url) {
         NSLog("LinkLabFlutterPlugin - getDynamicLink: handleUniversalLink returned true")
         result(true)
       } else {

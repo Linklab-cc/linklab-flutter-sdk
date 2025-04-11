@@ -5,7 +5,6 @@ import Linklab
 @available(iOS 14.3, *)
 public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
   private var channel: FlutterMethodChannel?
-  private var linkDestination: LinkDestination?
   private var pendingInitialLinkRequest = false
 
   public static func register(with registrar: FlutterPluginRegistrar) {
@@ -30,29 +29,51 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
 
   private func handleUniversalLink(_ url: URL) -> Bool {
     NSLog("LinkLabFlutterPlugin - handleUniversalLink: \(url.absoluteString)")
-    let result = Linklab.shared.handleUniversalLink(url)
-    NSLog("LinkLabFlutterPlugin - handleUniversalLink result: \(result)")
-    return result
+    // Since handleIncomingURL is @MainActor-isolated, we need to dispatch to the main actor
+    Task { @MainActor in
+      _ = Linklab.shared.handleIncomingURL(url)
+    }
+    // We return true to indicate we're handling the URL, though the actual processing will happen asynchronously
+    return true
   }
 
-  private func convertLinkDestinationToMap(_ destination: LinkDestination?) -> [String: Any]? {
-    NSLog("LinkLabFlutterPlugin - convertLinkDestinationToMap called")
-    guard let destination = destination else {
-      NSLog("LinkLabFlutterPlugin - convertLinkDestinationToMap: destination is nil")
+  // Convert LinkData to a map format that Flutter can understand
+  private func convertLinkDataToMap(_ linkData: LinkData?) -> [String: Any]? {
+    NSLog("LinkLabFlutterPlugin - convertLinkDataToMap called")
+    guard let linkData = linkData else {
+      NSLog("LinkLabFlutterPlugin - convertLinkDataToMap: linkData is nil")
       return nil
     }
 
-    let map:[String : Any] = [
-      "id": destination.route,
-      "fullLink": destination.route,
-      "createdAt": Int(Date().timeIntervalSince1970 * 1000),
-      "updatedAt": Int(Date().timeIntervalSince1970 * 1000),
-      "userId": "",
-      "domainType": "custom",
-      "domain": destination.route,
-      "parameters": destination.parameters
+    // Create a date formatter to convert Date objects to milliseconds since epoch
+    let dateFormatter = ISO8601DateFormatter()
+
+    var createdAtMs: Int64 = 0
+    if let createdAt = linkData.createdAt {
+        createdAtMs = Int64(createdAt.timeIntervalSince1970 * 1000)
+    }
+
+    var updatedAtMs: Int64 = 0
+    if let updatedAt = linkData.updatedAt {
+        updatedAtMs = Int64(updatedAt.timeIntervalSince1970 * 1000)
+    }
+
+    let map: [String: Any] = [
+      "id": linkData.id,
+      "fullLink": linkData.fullLink,
+      "createdAt": createdAtMs,
+      "updatedAt": updatedAtMs,
+      "userId": linkData.userId,
+      "packageName": linkData.packageName ?? "",
+      "bundleId": linkData.bundleId ?? "",
+      "appStoreId": linkData.appStoreId ?? "",
+      "domainType": linkData.domainType,
+      "domain": linkData.domain,
+      // Add any additional parameters if needed
+      "parameters": [:] // In the new implementation, you might need to extract parameters from somewhere else
     ]
-    NSLog("LinkLabFlutterPlugin - convertLinkDestinationToMap: created map with route: \(destination.route)")
+
+    NSLog("LinkLabFlutterPlugin - convertLinkDataToMap: created map with id: \(linkData.id)")
     return map
   }
 
@@ -61,41 +82,69 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
     switch call.method {
     case "init":
       NSLog("LinkLabFlutterPlugin - initializing with config")
+
+      // Parse configuration from Flutter arguments if needed
+      var customDomains: [String] = []
+      var debugLoggingEnabled = true
+      var networkTimeout: TimeInterval = 30.0
+      var networkRetryCount = 3
+
+      if let args = call.arguments as? [String: Any] {
+          if let domains = args["customDomains"] as? [String] {
+              customDomains = domains
+          }
+          if let debug = args["debugLoggingEnabled"] as? Bool {
+              debugLoggingEnabled = debug
+          }
+          if let timeout = args["networkTimeout"] as? Double {
+              networkTimeout = timeout
+          }
+          if let retryCount = args["networkRetryCount"] as? Int {
+              networkRetryCount = retryCount
+          }
+      }
+
       let config = Configuration(
-        debugLoggingEnabled: true
+        networkTimeout: networkTimeout,
+        networkRetryCount: networkRetryCount,
+        debugLoggingEnabled: debugLoggingEnabled,
+        customDomains: customDomains
       )
 
-      Linklab.shared.initialize(with: config) { [weak self] destination in
-        NSLog("LinkLabFlutterPlugin - initialize callback received")
-        self?.linkDestination = destination
+      // Since initialize is @MainActor-isolated, we need to run it on the main actor
+      Task { @MainActor in
+        Linklab.shared.initialize(with: config) { [weak self] linkData in
+          NSLog("LinkLabFlutterPlugin - initialize callback received")
 
-        if let destination = destination, let channel = self?.channel {
-          NSLog("LinkLabFlutterPlugin - destination received in init callback: \(destination.route)")
-          let linkData = self?.convertLinkDestinationToMap(destination)
-          NSLog("LinkLabFlutterPlugin - invoking onDynamicLinkReceived")
-          channel.invokeMethod("onDynamicLinkReceived", arguments: linkData)
-        } else {
-          NSLog("LinkLabFlutterPlugin - no destination or channel in init callback")
-        }
+          if let linkData = linkData, let channel = self?.channel {
+            NSLog("LinkLabFlutterPlugin - linkData received in init callback: \(linkData.id)")
+            let linkDataMap = self?.convertLinkDataToMap(linkData)
+            NSLog("LinkLabFlutterPlugin - invoking onDynamicLinkReceived")
+            channel.invokeMethod("onDynamicLinkReceived", arguments: linkDataMap)
+          } else {
+            NSLog("LinkLabFlutterPlugin - no linkData or channel in init callback")
+          }
 
-        if self?.pendingInitialLinkRequest == true {
-          NSLog("LinkLabFlutterPlugin - resolving pending initial link request")
-          self?.pendingInitialLinkRequest = false
-          result(self?.convertLinkDestinationToMap(destination))
+          if let pendingInitialLinkRequest = self?.pendingInitialLinkRequest, pendingInitialLinkRequest {
+            NSLog("LinkLabFlutterPlugin - resolving pending initial link request")
+            self?.pendingInitialLinkRequest = false
+            result(self?.convertLinkDataToMap(linkData))
+          }
         }
       }
+
       NSLog("LinkLabFlutterPlugin - init completed, returning true")
       result(true)
 
     case "getInitialLink":
       NSLog("LinkLabFlutterPlugin - getInitialLink called")
-      if let linkDestination = self.linkDestination {
-        NSLog("LinkLabFlutterPlugin - getInitialLink: returning cached destination: \(linkDestination.route)")
-        result(convertLinkDestinationToMap(linkDestination))
-      } else {
-        NSLog("LinkLabFlutterPlugin - getInitialLink: no cached destination, setting pendingInitialLinkRequest")
-        pendingInitialLinkRequest = true
-        // Will return result when deep link is received
+      // Since we don't store linkData in the plugin now, we need to do something else here.
+      // In this case, we'll set a flag to respond when we get data from the SDK.
+      pendingInitialLinkRequest = true
+      NSLog("LinkLabFlutterPlugin - getInitialLink: set pendingInitialLinkRequest")
+      // We need to run processDeferredDeepLink on the main actor
+      Task { @MainActor in
+        Linklab.shared.processDeferredDeepLink()
       }
 
     case "getDynamicLink":
@@ -109,7 +158,7 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
       }
 
       NSLog("LinkLabFlutterPlugin - getDynamicLink: processing URL: \(url.absoluteString)")
-      if handleUniversalLink(url) { //TODO check how do we send full link details to external app?
+      if handleUniversalLink(url) {
         NSLog("LinkLabFlutterPlugin - getDynamicLink: handleUniversalLink returned true")
         result(true)
       } else {

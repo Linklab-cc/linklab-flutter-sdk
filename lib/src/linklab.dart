@@ -60,8 +60,13 @@ class LinkLabData {
     final data = LinkLabData(
       id: map['id'] as String,
       fullLink: map['fullLink'] as String,
-      createdAt: map['createdAt'] as int,
-      updatedAt: map['updatedAt'] as int,
+      // Handle both int and double types for timestamps
+      createdAt: map['createdAt'] is int
+          ? map['createdAt'] as int
+          : (map['createdAt'] as double).toInt(),
+      updatedAt: map['updatedAt'] is int
+          ? map['updatedAt'] as int
+          : (map['updatedAt'] as double).toInt(),
       userId: map['userId'] as String,
       packageName: map['packageName'] as String?,
       bundleId: map['bundleId'] as String?,
@@ -98,6 +103,29 @@ class LinkLabData {
 typedef LinkLabLinkCallback = void Function(LinkLabData data);
 typedef LinkLabErrorCallback = void Function(String message, String? stackTrace);
 
+class LinkLabConfig {
+  final List<String> customDomains;
+  final bool debugLoggingEnabled;
+  final double networkTimeout;
+  final int networkRetryCount;
+
+  LinkLabConfig({
+    this.customDomains = const [],
+    this.debugLoggingEnabled = false,
+    this.networkTimeout = 30.0,
+    this.networkRetryCount = 3,
+  });
+
+  Map<String, dynamic> toMap() {
+    return {
+      'customDomains': customDomains,
+      'debugLoggingEnabled': debugLoggingEnabled,
+      'networkTimeout': networkTimeout,
+      'networkRetryCount': networkRetryCount,
+    };
+  }
+}
+
 class LinkLab {
   static final LinkLab _instance = LinkLab._internal();
 
@@ -120,13 +148,14 @@ class LinkLab {
   LinkLabLinkCallback? _onLink;
   LinkLabErrorCallback? _onError;
 
-  Future<void> initialize() async {
+  Future<void> initialize({LinkLabConfig? config}) async {
     log('LinkLab.initialize called');
     _channel.setMethodCallHandler(_handleMethod);
     log('Method call handler set');
 
     try {
-      await _channel.invokeMethod('init');
+      final Map<String, dynamic> configMap = config?.toMap() ?? {};
+      await _channel.invokeMethod('init', configMap);
       log('LinkLab initialization successful');
     } catch (e, stackTrace) {
       log('Error during LinkLab initialization: $e');

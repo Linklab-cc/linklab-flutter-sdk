@@ -6,7 +6,6 @@ import Linklab
 public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
   private var channel: FlutterMethodChannel?
   private var linkDestination: LinkDestination?
-  private var pendingInitialLinkRequest = false
   
   public static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(name: "cc.linklab.flutter/linklab", binaryMessenger: registrar.messenger())
@@ -50,27 +49,21 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
       )
       
       Linklab.shared.initialize(with: config) { [weak self] destination in
-        self?.linkDestination = destination
+        guard let self = self else { return }
+        
+        self.linkDestination = destination
 
-        if let destination = destination, let channel = self?.channel {
-          let linkData = self?.convertLinkDestinationToMap(destination)
+        // Always notify via stream if we got a link destination
+        if let destination = destination, let channel = self.channel {
+          let linkData = self.convertLinkDestinationToMap(destination)
           channel.invokeMethod("onDynamicLinkReceived", arguments: linkData)
-        }
-
-        if self?.pendingInitialLinkRequest == true {
-          self?.pendingInitialLinkRequest = false
-          result(self?.convertLinkDestinationToMap(destination))
         }
       }
       result(true)
 
     case "getInitialLink":
-      if let linkDestination = self.linkDestination {
-        result(convertLinkDestinationToMap(linkDestination))
-      } else {
-        pendingInitialLinkRequest = true
-        // Will return result when deep link is received
-      }
+      // Simply return the current link destination or nil
+      result(convertLinkDestinationToMap(self.linkDestination))
 
     case "getDynamicLink":
       guard let args = call.arguments as? [String: Any],

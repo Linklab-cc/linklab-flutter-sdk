@@ -136,11 +136,16 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
 
     case "getInitialLink":
       NSLog("LinkLabFlutterPlugin - getInitialLink called")
-      // Simply get the current value from the Linklab SDK
       Task { @MainActor in
-        let linkData = await Linklab.shared.getLinkData()
+        // Try to get current link data from the SDK
+        let linkData = Linklab.shared.getLinkData()
         NSLog("LinkLabFlutterPlugin - getInitialLink: got linkData: \(String(describing: linkData))")
+        
+        // Convert the link data to a map and return it (or nil if no link)
         result(convertLinkDataToMap(linkData))
+        
+        // Also process any deferred links that might be pending
+        Linklab.shared.processDeferredDeepLink()
       }
 
     case "getDynamicLink":

@@ -1,6 +1,6 @@
 name: linklab_flutter_sdk
 description: Flutter SDK for LinkLab deep linking service
-version: 0.0.1
+version: 0.1.1
 homepage: https://linklab.cc
 
 environment:

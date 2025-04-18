@@ -5,7 +5,6 @@ import Linklab
 @available(iOS 14.3, *)
 public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
   private var channel: FlutterMethodChannel?
-  private var pendingInitialLinkRequest = false
 
   public static func register(with registrar: FlutterPluginRegistrar) {
     NSLog("LinkLabFlutterPlugin - register called")
@@ -115,20 +114,19 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
       Task { @MainActor in
         Linklab.shared.initialize(with: config) { [weak self] linkData in
           NSLog("LinkLabFlutterPlugin - initialize callback received")
-
-          if let linkData = linkData, let channel = self?.channel {
+          guard let self = self else {
+            NSLog("LinkLabFlutterPlugin - self is nil in initialization callback")
+            return
+          }
+          
+          // Always notify via stream if we got a link destination
+          if let linkData = linkData, let channel = self.channel {
             NSLog("LinkLabFlutterPlugin - linkData received in init callback: \(linkData.id)")
-            let linkDataMap = self?.convertLinkDataToMap(linkData)
+            let linkDataMap = self.convertLinkDataToMap(linkData)
             NSLog("LinkLabFlutterPlugin - invoking onDynamicLinkReceived")
             channel.invokeMethod("onDynamicLinkReceived", arguments: linkDataMap)
           } else {
             NSLog("LinkLabFlutterPlugin - no linkData or channel in init callback")
-          }
-
-          if let pendingInitialLinkRequest = self?.pendingInitialLinkRequest, pendingInitialLinkRequest {
-            NSLog("LinkLabFlutterPlugin - resolving pending initial link request")
-            self?.pendingInitialLinkRequest = false
-            result(self?.convertLinkDataToMap(linkData))
           }
         }
       }
@@ -138,13 +136,11 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
 
     case "getInitialLink":
       NSLog("LinkLabFlutterPlugin - getInitialLink called")
-      // Since we don't store linkData in the plugin now, we need to do something else here.
-      // In this case, we'll set a flag to respond when we get data from the SDK.
-      pendingInitialLinkRequest = true
-      NSLog("LinkLabFlutterPlugin - getInitialLink: set pendingInitialLinkRequest")
-      // We need to run processDeferredDeepLink on the main actor
+      // Simply get the current value from the Linklab SDK
       Task { @MainActor in
-        Linklab.shared.processDeferredDeepLink()
+        let linkData = await Linklab.shared.getLinkData()
+        NSLog("LinkLabFlutterPlugin - getInitialLink: got linkData: \(String(describing: linkData))")
+        result(convertLinkDataToMap(linkData))
       }
 
     case "getDynamicLink":

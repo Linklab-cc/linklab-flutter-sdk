@@ -6,6 +6,7 @@ import android.net.Uri
 import android.util.Log
 import androidx.annotation.NonNull
 import cc.linklab.android.LinkLab
+import cc.linklab.android.LinkLabConfig
 
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.activity.ActivityAware
@@ -36,8 +37,8 @@ class LinkLabFlutterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, New
       override fun onDynamicLinkRetrieved(fullLink: Uri, data: LinkLab.LinkData) {
         Log.d(TAG, "Dynamic link retrieved: $fullLink")
         
-        // Create the base map with all required fields
-        val linkDataMap = mutableMapOf(
+        // Create the base map explicitly typed as MutableMap<String, Any>
+        val linkDataMap = mutableMapOf<String, Any>(
           "fullLink" to fullLink.toString(),
           "id" to data.id,
           "createdAt" to data.createdAt,
@@ -52,15 +53,20 @@ class LinkLabFlutterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, New
         
         // Add parameters if they exist
         if (data.parameters != null) {
-          linkDataMap["parameters"] = HashMap(data.parameters)
+          // Create a new HashMap for parameters to ensure correct type
+          val paramsMap = HashMap<String, String>(data.parameters)
+          linkDataMap["parameters"] = paramsMap // Add the HashMap
           Log.d(TAG, "Including parameters in link data: ${data.parameters}")
         } else {
           Log.d(TAG, "No parameters in link data")
         }
-        
-        pendingDynamicLinkData = linkDataMap
-        Log.d(TAG, "Sending dynamic link to Flutter: $linkDataMap")
-        channel.invokeMethod("onDynamicLinkReceived", linkDataMap)
+
+        // Convert to immutable Map<String, Any> before assigning and sending
+        val finalLinkData: Map<String, Any> = linkDataMap.toMap()
+
+        pendingDynamicLinkData = finalLinkData
+        Log.d(TAG, "Sending dynamic link to Flutter: $finalLinkData")
+        channel.invokeMethod("onDynamicLinkReceived", finalLinkData) // Pass the immutable map
       }
 
       override fun onError(exception: Exception) {

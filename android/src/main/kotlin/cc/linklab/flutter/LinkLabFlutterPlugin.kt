@@ -35,7 +35,9 @@ class LinkLabFlutterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, New
     linkLab?.addListener(object : LinkLab.LinkLabListener {
       override fun onDynamicLinkRetrieved(fullLink: Uri, data: LinkLab.LinkData) {
         Log.d(TAG, "Dynamic link retrieved: $fullLink")
-        val linkData = mapOf(
+        
+        // Create the base map with all required fields
+        val linkDataMap = mutableMapOf(
           "fullLink" to fullLink.toString(),
           "id" to data.id,
           "createdAt" to data.createdAt,
@@ -48,9 +50,17 @@ class LinkLabFlutterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, New
           "domain" to data.domain
         )
         
-        pendingDynamicLinkData = linkData
-        Log.d(TAG, "Sending dynamic link to Flutter: $linkData")
-        channel.invokeMethod("onDynamicLinkReceived", linkData)
+        // Add parameters if they exist
+        if (data.parameters != null) {
+          linkDataMap["parameters"] = data.parameters
+          Log.d(TAG, "Including parameters in link data: ${data.parameters}")
+        } else {
+          Log.d(TAG, "No parameters in link data")
+        }
+        
+        pendingDynamicLinkData = linkDataMap
+        Log.d(TAG, "Sending dynamic link to Flutter: $linkDataMap")
+        channel.invokeMethod("onDynamicLinkReceived", linkDataMap)
       }
 
       override fun onError(exception: Exception) {
@@ -69,7 +79,27 @@ class LinkLabFlutterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, New
     when (call.method) {
       "init" -> {
         Log.d(TAG, "Initializing LinkLab")
-        linkLab?.init()
+        
+        // Extract the configuration from call.arguments
+        val configMap = call.arguments as? Map<*, *>
+        val customDomains = configMap?.get("customDomains") as? List<*>
+        val debugLoggingEnabled = configMap?.get("debugLoggingEnabled") as? Boolean ?: false
+        val networkTimeout = (configMap?.get("networkTimeout") as? Number)?.toDouble() ?: 30.0
+        val networkRetryCount = (configMap?.get("networkRetryCount") as? Number)?.toInt() ?: 3
+        
+        // Convert custom domains list to String list
+        val domains = customDomains?.map { it.toString() } ?: listOf()
+        
+        // Create and pass the configuration to the LinkLab SDK
+        val config = LinkLab.LinkLabConfig(
+            customDomains = domains,
+            debugLoggingEnabled = debugLoggingEnabled,
+            networkTimeout = networkTimeout,
+            networkRetryCount = networkRetryCount
+        )
+        
+        Log.d(TAG, "Initializing with custom domains: $domains, debug: $debugLoggingEnabled")
+        linkLab?.init(config)
         result.success(true)
       }
       "getInitialLink" -> {

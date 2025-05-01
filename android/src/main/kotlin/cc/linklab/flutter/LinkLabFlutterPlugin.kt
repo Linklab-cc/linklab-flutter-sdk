@@ -52,7 +52,7 @@ class LinkLabFlutterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, New
         
         // Add parameters if they exist
         if (data.parameters != null) {
-          linkDataMap["parameters"] = data.parameters
+          linkDataMap["parameters"] = HashMap(data.parameters)
           Log.d(TAG, "Including parameters in link data: ${data.parameters}")
         } else {
           Log.d(TAG, "No parameters in link data")
@@ -91,7 +91,7 @@ class LinkLabFlutterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, New
         val domains = customDomains?.map { it.toString() } ?: listOf()
         
         // Create and pass the configuration to the LinkLab SDK
-        val config = LinkLab.LinkLabConfig(
+        val config = LinkLabConfig(
             customDomains = domains,
             debugLoggingEnabled = debugLoggingEnabled,
             networkTimeout = networkTimeout,

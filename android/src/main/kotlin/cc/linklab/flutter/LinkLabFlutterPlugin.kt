@@ -23,6 +23,8 @@ class LinkLabFlutterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, New
   private var activityBinding: ActivityPluginBinding? = null
   private var linkLab: LinkLab? = null
   private var pendingDynamicLinkData: Map<String, Any>? = null
+  private var pendingDynamicIntent: Intent? = null   // Holds the first Intent that arrives before the SDK has been fully initialised via the init() method.
+  private var isLinkLabInitialised: Boolean = false  // Tracks whether the LinkLab SDK has been initialised with a configuration.
   private val TAG = "LinkLabFlutter"
 
   override fun onAttachedToEngine(@NonNull flutterPluginBinding: FlutterPlugin.FlutterPluginBinding) {
@@ -106,6 +108,14 @@ class LinkLabFlutterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, New
         
         Log.d(TAG, "Initializing with custom domains: $domains, debug: $debugLoggingEnabled")
         linkLab?.init(config)
+
+        // Mark the SDK as initialised and process any intent that might have been captured earlier.
+        isLinkLabInitialised = true
+        pendingDynamicIntent?.let {
+          Log.d(TAG, "Processing previously pending intent after initialisation: ${it.data}")
+          processIntent(it)
+          pendingDynamicIntent = null
+        }
         result.success(true)
       }
       "getInitialLink" -> {
@@ -202,6 +212,14 @@ class LinkLabFlutterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, New
 
   private fun processIntent(intent: Intent?): Boolean {
     Log.d(TAG, "Processing intent: ${intent?.data}")
+    // If the SDK isn't initialised yet, store the intent and return false. It will be
+    // processed automatically once the Flutter side calls `init`.
+    if (!isLinkLabInitialised) {
+      Log.d(TAG, "LinkLab not initialised yet. Storing intent for later processing.")
+      pendingDynamicIntent = intent
+      return false
+    }
+
     val result = linkLab?.processDynamicLink(intent) ?: false
     Log.d(TAG, "Intent processing result: $result")
     return result

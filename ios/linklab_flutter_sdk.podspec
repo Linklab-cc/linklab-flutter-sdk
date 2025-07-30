@@ -3,7 +3,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'linklab_flutter_sdk'
-  s.version          = '0.2.0'
+  s.version          = '0.2.1'
   s.summary          = 'Flutter SDK for LinkLab deep linking service'
   s.description      = <<-DESC
   A Flutter plugin for the LinkLab deep linking service. This plugin allows Flutter applications to handle dynamic links provided by LinkLab.

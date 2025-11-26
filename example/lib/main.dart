@@ -39,14 +39,14 @@ class _MyAppState extends State<MyApp> {
     final initialLink = await _linkLab.getInitialLink();
     if (initialLink != null) {
       setState(() {
-        _linkData = 'Initial link: ${initialLink.fullLink}';
+        _linkData = 'Initial link: ${initialLink.rawLink}';
       });
     }
 
     // Listen for future links
     _linkLab.onLink.listen((linkData) {
       setState(() {
-        _linkData = 'Link received: ${linkData.fullLink}';
+        _linkData = 'Link received: ${linkData.rawLink}';
       });
     });
 

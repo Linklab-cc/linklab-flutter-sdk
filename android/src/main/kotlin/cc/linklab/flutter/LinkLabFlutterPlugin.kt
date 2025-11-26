@@ -36,19 +36,19 @@ class LinkLabFlutterPlugin: FlutterPlugin, MethodCallHandler, ActivityAware, New
     
     // Setup listener for dynamic links
     linkLab?.addListener(object : LinkLab.LinkLabListener {
-      override fun onDynamicLinkRetrieved(fullLink: Uri, data: LinkLab.LinkData) {
-        Log.d(TAG, "Dynamic link retrieved: $fullLink")
+      override fun onDynamicLinkRetrieved(rawLink: Uri, data: LinkLab.LinkData) {
+        Log.d(TAG, "Dynamic link retrieved: $rawLink")
         
         // Create the base map explicitly typed as MutableMap<String, Any>
         val linkDataMap = mutableMapOf<String, Any>(
-          "fullLink" to fullLink.toString(),
+          "rawLink" to rawLink.toString(),
           "id" to data.id,
           "createdAt" to data.createdAt,
           "updatedAt" to data.updatedAt,
           "userId" to data.userId,
-          "packageName" to (data.packageName ?: ""),
-          "bundleId" to (data.bundleId ?: ""),
-          "appStoreId" to (data.appStoreId ?: ""),
+          "packageName" to data.packageName,
+          "bundleId" to data.bundleId,
+          "appStoreId" to data.appStoreId,
           "domainType" to data.domainType,
           "domain" to data.domain
         )

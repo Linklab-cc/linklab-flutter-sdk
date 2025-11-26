@@ -3,7 +3,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'linklab_flutter_sdk'
-  s.version          = '0.2.1'
+  s.version          = '0.2.2'
   s.summary          = 'Flutter SDK for LinkLab deep linking service'
   s.description      = <<-DESC
   A Flutter plugin for the LinkLab deep linking service. This plugin allows Flutter applications to handle dynamic links provided by LinkLab.
@@ -17,7 +17,7 @@ Pod::Spec.new do |s|
   s.platform = :ios, '14.3'
 
   # Add dependency to the LinkLab iOS SDK from CocoaPods
-  s.dependency 'Linklab', '~> 0.1.7'
+  s.dependency 'Linklab', '~> 0.2.2'
 
   # Flutter.framework does not contain a i386 slice.
   s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }

@@ -29,7 +29,7 @@ apply plugin: 'kotlin-android'
 
 android {
     namespace 'cc.linklab.flutter'
-    compileSdkVersion 33
+    compileSdkVersion 36
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
@@ -41,14 +41,14 @@ android {
     }
 
     defaultConfig {
-        minSdkVersion 16
-        targetSdkVersion 33
+        minSdkVersion 27
+        targetSdkVersion 36
     }
 
     dependencies {
         implementation fileTree(dir: 'libs', include: ['*.jar'])
         implementation "org.jetbrains.kotlin:kotlin-stdlib-jdk7:$kotlin_version"
-        implementation "cc.linklab:android:0.0.2"
+        implementation "cc.linklab:android:0.0.3"
     }
 }
 

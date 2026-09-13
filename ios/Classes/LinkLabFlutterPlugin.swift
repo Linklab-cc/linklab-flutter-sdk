@@ -121,14 +121,13 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
             channel.invokeMethod("onDynamicLinkReceived", arguments: linkDataMap)
           }
         }
+        result(true)
       }
-      result(true)
 
     case "getInitialLink":
       Task { @MainActor in
-        let linkData = Linklab.shared.getLinkData()
+        let linkData = await Linklab.shared.getInitialLink()
         result(convertLinkDataToMap(linkData))
-        Linklab.shared.processDeferredDeepLink()
       }
 
     case "getDynamicLink":

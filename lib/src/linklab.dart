@@ -40,11 +40,18 @@ class LinkLabData {
   factory LinkLabData.fromMap(Map<dynamic, dynamic> map) {
     log('LinkLabData.fromMap called with: ${map.toString()}');
 
+    final rawLink = map['rawLink'] as String? ?? map['fullLink'] as String? ?? '';
+    final params = <String, String>{};
+    try {
+      params.addAll(Uri.tryParse(rawLink)?.queryParameters ?? {});
+    } on FormatException {
+      log('Unable to parse destination query parameters');
+    }
+
     // Handle parameters coming from iOS SDK
-    Map<String, String>? params;
     if (map['parameters'] != null) {
       if (map['parameters'] is Map) {
-        params = Map<String, String>.from((map['parameters'] as Map).map((key, value) {
+        params.addAll((map['parameters'] as Map).map((key, value) {
           return MapEntry(key.toString(), value.toString());
         }));
       } else {
@@ -68,7 +75,7 @@ class LinkLabData {
     return LinkLabData(
       // CRITICAL FIX: Cast as String? because id can be null for unrecognized links
       id: map['id'] as String?,
-      rawLink: map['rawLink'] as String? ?? "", // Safety fallback
+      rawLink: rawLink, // Safety fallback
       createdAt: createdAt,
       updatedAt: updatedAt,
       userId: map['userId'] as String?,

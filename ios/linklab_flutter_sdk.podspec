@@ -1,25 +1,24 @@
 #
 # To learn more about a Podspec see http://guides.cocoapods.org/syntax/podspec.html.
+# Run `pod lib lint linklab_flutter_sdk.podspec` to validate before publishing.
 #
 Pod::Spec.new do |s|
   s.name             = 'linklab_flutter_sdk'
-  s.version          = '0.2.5'
-  s.summary          = 'Flutter SDK for LinkLab deep linking service'
+  s.version          = '0.3.0'
+  s.summary          = 'Flutter plugin for Linklab dynamic links and deferred deep linking.'
   s.description      = <<-DESC
-  A Flutter plugin for the LinkLab deep linking service. This plugin allows Flutter applications to handle dynamic links provided by LinkLab.
+Flutter plugin for the Linklab deep linking service: universal links, deferred deep links
+(pasteboard / IP attribution) and short-link resolution, bridged to the Linklab iOS SDK.
                        DESC
   s.homepage         = 'https://linklab.cc'
   s.license          = { :file => '../LICENSE' }
-  s.author           = { 'LinkLab' => 'info@linklab.cc' }
+  s.author           = { 'Linklab' => 'info@linklab.cc' }
   s.source           = { :path => '.' }
-  s.source_files = 'Classes/**/*'
+  s.source_files     = 'Classes/**/*'
   s.dependency 'Flutter'
+  s.dependency 'Linklab', '~> 0.3.0'
   s.platform = :ios, '14.3'
 
-  # Add dependency to the LinkLab iOS SDK from CocoaPods
-  s.dependency 'Linklab', '~> 0.2.4'
-
-  # Flutter.framework does not contain a i386 slice.
-  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES', 'EXCLUDED_ARCHS[sdk=iphonesimulator*]' => 'i386' }
-  s.swift_version = '5.0'
+  s.pod_target_xcconfig = { 'DEFINES_MODULE' => 'YES' }
+  s.swift_version = '5.9'
 end

@@ -1,191 +1,211 @@
-# LinkLab Flutter SDK
+# Linklab Flutter SDK
 
-A Flutter plugin for the LinkLab deep linking service. This plugin allows Flutter applications to handle dynamic links provided by LinkLab.
+Flutter plugin for the [Linklab](https://linklab.cc) deep linking service. It wraps the
+Linklab Android and iOS SDKs and delivers resolved links to Dart as a stream of
+`LinkLabData`:
 
-## Features
+- **Direct links** — Android App Links / iOS universal links on `linklab.cc`,
+  `*.linklab.cc` and your custom domains.
+- **Deferred deep links** — Google Play Install Referrer (Android), pasteboard and
+  IP attribution (iOS) on first launch.
+- **Short-link resolution** — resolve any Linklab link on demand.
 
-- Process deep links automatically when the app is opened via a LinkLab link
-- Retrieve dynamic link details
-- Validate if a link is a LinkLab link
-- Support for both Android and iOS (coming soon)
-
-## Getting Started
-
-### Installation
-
-Add the package to your `pubspec.yaml` file:
+## Installation
 
 ```yaml
 dependencies:
-  linklab_flutter_sdk: ^0.1.0
+  linklab_flutter_sdk: ^0.3.0
 ```
 
-### Android Setup
+Requirements: Flutter 3.19+, Android `minSdk` 21+, iOS 14.3+.
 
-1. Ensure your `android/app/src/main/AndroidManifest.xml` file has the proper intent filter for your deep links:
+## Android setup
 
-```xml
-<activity
-    android:name=".MainActivity"
-    ...>
-    <intent-filter>
-        <action android:name="android.intent.action.VIEW" />
-        <category android:name="android.intent.category.DEFAULT" />
-        <category android:name="android.intent.category.BROWSABLE" />
-        <data
-            android:scheme="https"
-            android:host="linklab.cc" />
-    </intent-filter>
-</activity>
-```
+1. Add an App Links intent filter for every domain you use with Linklab to the
+   `MainActivity` in `android/app/src/main/AndroidManifest.xml`:
 
-### iOS Setup (Coming Soon)
+   ```xml
+   <intent-filter android:autoVerify="true">
+       <action android:name="android.intent.action.VIEW" />
+       <category android:name="android.intent.category.DEFAULT" />
+       <category android:name="android.intent.category.BROWSABLE" />
+       <data android:scheme="https" android:host="linklab.cc" />
+       <!-- one <data> element per custom domain -->
+       <data android:scheme="https" android:host="go.example.com" />
+   </intent-filter>
+   ```
 
-iOS support will be added in a future update.
+2. Host `https://<domain>/.well-known/assetlinks.json` for each domain (Linklab serves
+   it for `linklab.cc` and for custom domains configured in the dashboard). It must list
+   your package name and the SHA-256 fingerprints of your signing certificates.
+
+3. The plugin declares `android.permission.INTERNET`; nothing else is required. Deferred
+   links use the Play Install Referrer library, which is bundled with the SDK.
+
+## iOS setup
+
+1. In Xcode, add the **Associated Domains** capability to the Runner target with one entry
+   per domain:
+
+   ```
+   applinks:linklab.cc
+   applinks:go.example.com
+   ```
+
+2. Linklab hosts `https://<domain>/.well-known/apple-app-site-association` for your
+   domains; make sure the Team ID / bundle id in the dashboard match your app.
+
+3. The plugin implements `application(_:continue:restorationHandler:)`, so no
+   AppDelegate changes are needed. If you also use another deep-link plugin (for example
+   `app_links`), both can coexist: this plugin only claims universal links whose host is
+   a Linklab host and returns `false` for everything else.
 
 ## Usage
 
-### Initialization
-
-Initialize the LinkLab SDK in your app:
+### Initialize and listen
 
 ```dart
 import 'package:linklab_flutter_sdk/linklab_flutter_sdk.dart';
 
-void main() async {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Get the LinkLab singleton instance
-  final linkLab = LinkLab();
-  
-  // Initialize the plugin
-  await linkLab.initialize();
-  
-  // Configure with your API key
-  await linkLab.configure('your_api_key_here');
-  
-  runApp(MyApp());
-}
-```
 
-### Handling Dynamic Links
+  await LinkLab().initialize(
+    config: const LinkLabConfig(
+      customDomains: ['go.example.com'],
+      debugLoggingEnabled: false,
+      // iOS only; see "Pasteboard" below.
+      pasteboardMode: LinkLabPasteboardMode.automatic,
+    ),
+  );
 
-There are two ways to handle dynamic links:
-
-1. Using callbacks:
-
-```dart
-linkLab.setLinkListener((linkData) {
-  print('Received link: ${linkData.fullLink}');
-  // Navigate to the appropriate page based on the link
-});
-
-linkLab.setErrorListener((message, stackTrace) {
-  print('Error processing link: $message');
-});
-```
-
-2. Using the Stream API:
-
-```dart
-linkLab.onLink.listen((linkData) {
-  print('Received link: ${linkData.fullLink}');
-  // Navigate to the appropriate page based on the link
-});
-```
-
-### Getting the Initial Link
-
-If your app was opened from a dynamic link, you can retrieve it:
-
-```dart
-Future<void> checkInitialLink() async {
-  final linkData = await linkLab.getInitialLink();
-  if (linkData != null) {
-    print('App opened from link: ${linkData.fullLink}');
-    // Navigate to the appropriate page based on the link
-  }
-}
-```
-
-### Processing Links Manually
-
-You can also manually process a LinkLab short link:
-
-```dart
-await linkLab.getDynamicLink('https://linklab.cc/abcd1234');
-```
-
-### Validating Links
-
-Check if a link is a valid LinkLab link:
-
-```dart
-bool isValid = await linkLab.isLinkLabLink('https://linklab.cc/abcd1234');
-```
-
-## Example
-
-```dart
-import 'package:flutter/material.dart';
-import 'package:linklab_flutter_sdk/linklab_flutter_sdk.dart';
-
-void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-  
-  final linkLab = LinkLab();
-  await linkLab.initialize();
-  await linkLab.configure('your_api_key_here');
-  
   runApp(const MyApp());
 }
 
-class MyApp extends StatefulWidget {
-  const MyApp({Key? key}) : super(key: key);
-
-  @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  String _linkData = 'No link received yet';
-  final LinkLab _linkLab = LinkLab();
-
-  @override
-  void initState() {
-    super.initState();
-    _setupDynamicLinks();
+// Anywhere in the app (e.g. in a State.initState):
+final subscription = LinkLab().onLink.listen((LinkLabData link) {
+  if (link.isResolved) {
+    router.go(link.uri.path, extra: link.parameters);
+  } else {
+    // unrecognized / failed: link.fullLink is the URL as received
   }
-
-  Future<void> _setupDynamicLinks() async {
-    // Check for initial link
-    final initialLink = await _linkLab.getInitialLink();
-    if (initialLink != null) {
-      setState(() {
-        _linkData = 'Initial link: ${initialLink.fullLink}';
-      });
-    }
-
-    // Listen for future links
-    _linkLab.onLink.listen((linkData) {
-      setState(() {
-        _linkData = 'Link received: ${linkData.fullLink}';
-      });
-    });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      home: Scaffold(
-        appBar: AppBar(
-          title: const Text('LinkLab Demo'),
-        ),
-        body: Center(
-          child: Text(_linkData),
-        ),
-      ),
-    );
-  }
-}
+});
 ```
+
+`initialize` is idempotent: repeated calls return the same `Future`, and once it has
+completed further calls are no-ops. `onLink` is a broadcast stream that **buffers** every
+link received before the first listener subscribes and replays them, in order, to that
+listener — so it is safe to subscribe from a widget that is built after startup.
+
+### `getInitialLink` vs the stream
+
+Every link is delivered through `onLink`, including the one the app was launched with.
+`getInitialLink()` additionally returns the **first** link delivered in this process
+(or `null`), without consuming it. The platform side waits up to 5 s for a link that is
+still being resolved, which makes it convenient for a splash screen:
+
+```dart
+final initial = await LinkLab().getInitialLink();
+if (initial != null) { /* route immediately */ }
+```
+
+Use the stream for everything that happens while the app is running (a link opened from
+another app, a deferred link resolved after launch). Do not rely on `getInitialLink`
+alone: a deferred link may arrive after it returned `null`.
+
+### `LinkLabData`
+
+| Field | Type | Notes |
+|---|---|---|
+| `id` | `String?` | Server link id; `null` for unrecognized / failed |
+| `fullLink` | `String` | Destination URL; for unrecognized / failed the URL as received |
+| `shortLink` | `String?` | URL as received; `null` for install-referrer / IP attribution |
+| `createdAt`, `updatedAt` | `int?` | Epoch millis |
+| `packageName`, `bundleId`, `appStoreId` | `String?` | |
+| `domain` | `String?` | Host of the short link |
+| `domainType` | `LinkLabDomainType` | `linklab`, `custom`, `unrecognized` |
+| `parameters` | `Map<String, String>` | Never null: query params of `fullLink`, overridden by server-side parameters |
+| `resolutionStatus` | `LinkLabResolutionStatus` | `resolved`, `unrecognized`, `failed` |
+| `errorMessage` | `String?` | Set when `failed` |
+| `isDeferred` | `bool` | Install referrer / pasteboard / IP attribution |
+| `matchType` | `LinkLabMatchType` | `direct`, `installReferrer`, `clipboard`, `ipAddress`, `none` |
+| `uri` | `Uri` | `fullLink` parsed |
+
+Equality is defined on `(id, fullLink, shortLink, matchType)`.
+
+Links on a Linklab domain that the backend does not know (404) or that have no id (e.g.
+`https://go.example.com/?utm_source=x`) are delivered as `unrecognized` with the original
+URL and its query parameters, so custom-domain landing pages still reach the app. Network
+failures after retries are delivered as `failed` with `errorMessage`. Non-Linklab URLs are
+never delivered.
+
+### Resolve a link on demand
+
+```dart
+final LinkLabData? link = await LinkLab().resolve('https://linklab.cc/abcd1234');
+// null  -> not a Linklab link
+// else  -> resolved / unrecognized / failed LinkLabData (NOT delivered to onLink)
+```
+
+`isLinkLabLink(String)` tells you whether a URL is on `linklab.cc`, `*.linklab.cc` or one
+of your custom domains.
+
+### Pasteboard (iOS)
+
+`LinkLabConfig.pasteboardMode` controls deferred deep linking via the pasteboard:
+
+- `automatic` (default) — read at most once per install, during the first-launch deferred
+  check. iOS may show the "pasted from …" banner once. The pasteboard is only read when
+  it contains a string that looks like a URL or a Linklab token.
+- `manual` — the SDK never reads automatically. Call `checkPasteboard()` after a user
+  action; the result is returned directly and not delivered to `onLink`:
+
+  ```dart
+  final link = await LinkLab().checkPasteboard(); // null on Android
+  ```
+
+- `disabled` — never read the pasteboard.
+
+If no pasteboard link is found on first launch, the SDK asks the backend for an IP-based
+match (`matchType == ipAddress`). On Android, deferred links come from the Play Install
+Referrer (`matchType == installReferrer`); disable with `installReferrerEnabled: false`.
+
+### Errors and cleanup
+
+```dart
+LinkLab().setErrorListener((message, details) => log('Linklab: $message ($details)'));
+LinkLab().setLinkListener((link) => ...); // callback alternative to the stream
+LinkLab().dispose();                       // closes the stream, clears listeners
+```
+
+Asynchronous native errors (deferred check failures, `checkPasteboard` failures) go to the
+error listener. Failures of `initialize`, `resolve`, `getInitialLink` etc. are thrown to
+the caller (`PlatformException`).
+
+## Migration from 0.2.x
+
+- `LinkLabData.rawLink` is deprecated; use `fullLink`. `userId` was removed.
+- `parameters` is now non-null (`Map<String, String>`); drop the `?? {}`.
+- `domainType` is an enum (`LinkLabDomainType`); new fields `shortLink`,
+  `resolutionStatus`, `errorMessage`, `isDeferred`, `matchType`.
+- `getDynamicLink(String)` is deprecated; use `resolve(String)`, which returns the
+  `LinkLabData` directly instead of pushing it to the stream.
+- **Universal links / App Links on domains that are not Linklab domains are no longer
+  delivered** (previously the iOS plugin forwarded every universal link). If your app
+  relied on that, handle your own domains with a package such as
+  [`app_links`](https://pub.dev/packages/app_links); both plugins coexist.
+- The public top-level `log` function was removed.
+- `LinkLabConfig.networkTimeout` default changed from 30 s to 10 s; new options
+  `baseUrl`, `installReferrerEnabled`, `pasteboardMode`.
+- `initialize` now also completes the `ready` handshake; links are buffered on the
+  native side until then, so nothing is lost if you subscribe late.
+
+## Example
+
+See [`example/lib/main.dart`](example/lib/main.dart) for a complete app that initializes
+the SDK, shows the initial link, listens to the stream, resolves a typed link and checks
+the pasteboard.
+
+## License
+
+Apache 2.0 — see [LICENSE](LICENSE).

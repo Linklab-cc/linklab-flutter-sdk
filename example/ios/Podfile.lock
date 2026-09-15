@@ -1,0 +1,28 @@
+PODS:
+  - Flutter (1.0.0)
+  - Linklab (0.3.0)
+  - linklab_flutter_sdk (0.3.0):
+    - Flutter
+    - Linklab (~> 0.3.0)
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - Linklab (from `../../../linklab_ios_sdk`)
+  - linklab_flutter_sdk (from `.symlinks/plugins/linklab_flutter_sdk/ios`)
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  Linklab:
+    :path: "../../../linklab_ios_sdk"
+  linklab_flutter_sdk:
+    :path: ".symlinks/plugins/linklab_flutter_sdk/ios"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  Linklab: 896b7c8bab5d84d56168bb2be41371cc7c7f20ef
+  linklab_flutter_sdk: 12de1ddc5f1eb3a2134d35481384e812f589faaf
+
+PODFILE CHECKSUM: 95de490e083043dfcc5b3f101a14d6fb05129734
+
+COCOAPODS: 1.16.2

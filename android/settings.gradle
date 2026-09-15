@@ -1,4 +1,0 @@
-rootProject.name = 'linklab_flutter_sdk'
-
-include ':linklab-android-sdk'
-project(':linklab-android-sdk').projectDir = new File('../linklab-android-sdk/linklab')

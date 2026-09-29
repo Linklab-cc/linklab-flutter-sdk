@@ -3,7 +3,7 @@ description: >-
   Flutter plugin for Linklab dynamic links: Android App Links / iOS universal
   links, deferred deep links (Play Install Referrer, pasteboard, IP attribution)
   and short-link resolution.
-version: 0.3.0
+version: 0.4.0
 homepage: https://linklab.cc
 repository: https://github.com/Linklab-cc/linklab-flutter-sdk
 issue_tracker: https://github.com/Linklab-cc/linklab-flutter-sdk/issues
@@ -15,8 +15,8 @@ topics:
   - app-links
 
 environment:
-  sdk: '>=3.3.0 <4.0.0'
-  flutter: '>=3.19.0'
+  sdk: '>=3.10.0 <4.0.0'
+  flutter: '>=3.38.0'
 
 dependencies:
   flutter:

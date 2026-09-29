@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.4.0 - 2026-09-29
+
+### Added
+- iOS: `UIScene` lifecycle support. The plugin now registers as a Flutter scene delegate and
+  receives universal links and custom-scheme URLs through `scene(_:willConnectTo:options:)`,
+  `scene(_:openURLContexts:)` and `scene(_:continue:)`, next to the existing
+  `UIApplicationDelegate` callbacks (Flutter forwards only one of the two, depending on whether
+  the app adopted `UIScene`). Required for apps built with Xcode 27 / the iOS 27 SDK, where
+  Apple mandates `UIScene` and apps without it fail to launch.
+- `LinkLabConfig.forwardNonLinklabLinks` (default `false`): deliver URLs that are not Linklab
+  links (other https hosts, custom URL schemes) through `onLink` unchanged, as
+  `LinkLabResolutionStatus.passthrough`, so the plugin can be the app's only deep-link
+  receiver. Such links are never sent to the backend and never claimed on the platform side.
+- `LinkLabResolutionStatus.passthrough` and `LinkLabData.isPassthrough`.
+
+### Changed
+- iOS: URLs received before Dart calls `initialize` are queued in the plugin and routed once
+  the configuration (custom domains, forwarding) is known. Previously a custom-domain link
+  that arrived before `init` (cold start) was dropped because the domains were not known yet.
+- Minimum Flutter version is 3.38.0 (Dart 3.10), for the scene-delegate registration API.
+
 ## 0.3.0 - 2026-09-15
 
 Major rewrite on top of Linklab Android SDK 0.1.0 and Linklab iOS SDK 0.3.0.

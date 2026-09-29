@@ -25,6 +25,7 @@ class LinkLabConfig {
     this.baseUrl = 'https://linklab.cc',
     this.installReferrerEnabled = true,
     this.pasteboardMode = LinkLabPasteboardMode.automatic,
+    this.forwardNonLinklabLinks = false,
   });
 
   /// Additional hosts (exact, case-insensitive match) that are treated as
@@ -54,6 +55,17 @@ class LinkLabConfig {
   /// iOS only: pasteboard policy for deferred deep linking.
   final LinkLabPasteboardMode pasteboardMode;
 
+  /// Deliver URLs that are *not* Linklab links (other https hosts, custom
+  /// URL schemes) through [LinkLab.onLink] unchanged, with
+  /// [LinkLabResolutionStatus.passthrough].
+  ///
+  /// Lets the plugin act as the app's only deep-link receiver: universal
+  /// links / App Links / custom-scheme intents for any host reach Dart, while
+  /// Linklab hosts are still resolved server-side. Such links are never sent
+  /// to the Linklab backend and never claimed on the platform side, so other
+  /// plugins (sign-in SDKs, payment callbacks) keep receiving them.
+  final bool forwardNonLinklabLinks;
+
   /// Serialises the configuration for the platform side.
   Map<String, dynamic> toMap() => <String, dynamic>{
         'customDomains': List<String>.of(customDomains),
@@ -63,6 +75,7 @@ class LinkLabConfig {
         'baseUrl': baseUrl,
         'installReferrerEnabled': installReferrerEnabled,
         'pasteboardMode': pasteboardMode.name,
+        'forwardNonLinklabLinks': forwardNonLinklabLinks,
       };
 
   @override

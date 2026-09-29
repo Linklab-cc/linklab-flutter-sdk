@@ -24,6 +24,12 @@ enum LinkLabResolutionStatus {
   /// [LinkLabData.fullLink] is the URL as received and
   /// [LinkLabData.errorMessage] describes the failure.
   failed,
+
+  /// Not a Linklab link: delivered unchanged because
+  /// [LinkLabConfig.forwardNonLinklabLinks] is enabled. [LinkLabData.fullLink]
+  /// is the URL as received; [LinkLabData.parameters] holds its query.
+  /// The link was never sent to the Linklab backend.
+  passthrough,
 }
 
 /// How the link reached the app.
@@ -203,6 +209,11 @@ class LinkLabData {
 
   /// `true` when [resolutionStatus] is [LinkLabResolutionStatus.resolved].
   bool get isResolved => resolutionStatus == LinkLabResolutionStatus.resolved;
+
+  /// `true` when this is a non-Linklab URL forwarded as received (see
+  /// [LinkLabConfig.forwardNonLinklabLinks]).
+  bool get isPassthrough =>
+      resolutionStatus == LinkLabResolutionStatus.passthrough;
 
   /// Legacy alias of [fullLink].
   @Deprecated('Use fullLink')

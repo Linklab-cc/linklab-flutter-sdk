@@ -78,6 +78,15 @@ void main() {
       expect(config['customDomains'], ['go.potje.tech']);
       expect(config['pasteboardMode'], 'manual');
       expect(config['networkTimeout'], 10.0);
+      expect(config['forwardNonLinklabLinks'], isFalse);
+    });
+
+    test('sends forwardNonLinklabLinks when enabled', () async {
+      await LinkLab().initialize(
+        config: const LinkLabConfig(forwardNonLinklabLinks: true),
+      );
+      final config = calls.first.arguments as Map;
+      expect(config['forwardNonLinklabLinks'], isTrue);
     });
 
     test('is idempotent: same future while pending, no-op after', () async {
@@ -119,6 +128,36 @@ void main() {
   });
 
   group('onLink', () {
+    test('delivers a forwarded non-Linklab link as passthrough', () async {
+      final linkLab = LinkLab();
+      await linkLab.initialize(
+        config: const LinkLabConfig(forwardNonLinklabLinks: true),
+      );
+      final received = <LinkLabData>[];
+      final sub = linkLab.onLink.listen(received.add);
+
+      await nativeCall('onLink', <String, dynamic>{
+        'fullLink': 'https://auth.example.com/?mode=signIn&oobCode=abc',
+        'shortLink': 'https://auth.example.com/?mode=signIn&oobCode=abc',
+        'domain': 'auth.example.com',
+        'domainType': 'unrecognized',
+        'parameters': <String, String>{},
+        'resolutionStatus': 'passthrough',
+        'isDeferred': false,
+        'matchType': 'direct',
+      });
+      await Future<void>.delayed(Duration.zero);
+
+      expect(received, hasLength(1));
+      final link = received.single;
+      expect(link.isPassthrough, isTrue);
+      expect(link.isResolved, isFalse);
+      expect(link.id, isNull);
+      expect(link.uri.host, 'auth.example.com');
+      expect(link.parameters, {'mode': 'signIn', 'oobCode': 'abc'});
+      await sub.cancel();
+    });
+
     test('buffers links until the first listener and flushes in order',
         () async {
       final linkLab = LinkLab();

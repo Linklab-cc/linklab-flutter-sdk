@@ -55,10 +55,17 @@ Requirements: Flutter 3.19+, Android `minSdk` 21+, iOS 14.3+.
 2. Linklab hosts `https://<domain>/.well-known/apple-app-site-association` for your
    domains; make sure the Team ID / bundle id in the dashboard match your app.
 
-3. The plugin implements `application(_:continue:restorationHandler:)`, so no
-   AppDelegate changes are needed. If you also use another deep-link plugin (for example
-   `app_links`), both can coexist: this plugin only claims universal links whose host is
-   a Linklab host and returns `false` for everything else.
+3. No `AppDelegate` or `SceneDelegate` changes are needed. The plugin registers for both
+   lifecycles: `UIApplicationDelegate` (`application(_:continue:)`,
+   `application(_:open:options:)`) and `UISceneDelegate` (`scene(_:willConnectTo:options:)`,
+   `scene(_:openURLContexts:)`, `scene(_:continue:)`). Apps built with **Xcode 27** must adopt
+   `UIScene` (see Flutter's [UIScene migration guide][uiscene]); the plugin works with either.
+
+4. If you also use another deep-link plugin, both can coexist: this plugin only claims URLs
+   whose host is a Linklab host and returns `false` for everything else, including links it
+   forwards with `forwardNonLinklabLinks`.
+
+[uiscene]: https://docs.flutter.dev/release/breaking-changes/uiscenedelegate
 
 ## Usage
 
@@ -125,7 +132,7 @@ alone: a deferred link may arrive after it returned `null`.
 | `domain` | `String?` | Host of the short link |
 | `domainType` | `LinkLabDomainType` | `linklab`, `custom`, `unrecognized` |
 | `parameters` | `Map<String, String>` | Never null: query params of `fullLink`, overridden by server-side parameters |
-| `resolutionStatus` | `LinkLabResolutionStatus` | `resolved`, `unrecognized`, `failed` |
+| `resolutionStatus` | `LinkLabResolutionStatus` | `resolved`, `unrecognized`, `failed`, `passthrough` |
 | `errorMessage` | `String?` | Set when `failed` |
 | `isDeferred` | `bool` | Install referrer / pasteboard / IP attribution |
 | `matchType` | `LinkLabMatchType` | `direct`, `installReferrer`, `clipboard`, `ipAddress`, `none` |
@@ -137,7 +144,37 @@ Links on a Linklab domain that the backend does not know (404) or that have no i
 `https://go.example.com/?utm_source=x`) are delivered as `unrecognized` with the original
 URL and its query parameters, so custom-domain landing pages still reach the app. Network
 failures after retries are delivered as `failed` with `errorMessage`. Non-Linklab URLs are
-never delivered.
+not delivered unless `forwardNonLinklabLinks` is on (see below).
+
+### Forward non-Linklab links
+
+By default only Linklab links are delivered. Set `forwardNonLinklabLinks: true` to also
+receive every other URL the OS hands to the app (universal links / App Links on your own
+hosts, custom URL schemes) through the same stream, unchanged:
+
+```dart
+await LinkLab().initialize(
+  config: const LinkLabConfig(
+    customDomains: ['go.example.com'],
+    forwardNonLinklabLinks: true,
+  ),
+);
+
+LinkLab().onLink.listen((link) {
+  if (link.isPassthrough) {
+    // e.g. https://auth.example.com/?mode=signIn&oobCode=... or myapp://...
+    handleRawUrl(link.uri, link.parameters);
+  } else if (link.isResolved) {
+    router.go(link.uri.path, extra: link.parameters);
+  }
+});
+```
+
+Forwarded links have `resolutionStatus == passthrough`, `id == null`, `fullLink` and
+`shortLink` equal to the URL as received and `parameters` equal to its query. They are never
+sent to the Linklab backend, and the plugin does not claim them on the platform side, so
+sign-in / payment SDKs that listen for their own callback URLs keep working. This makes a
+second deep-link plugin such as `app_links` unnecessary.
 
 ### Resolve a link on demand
 

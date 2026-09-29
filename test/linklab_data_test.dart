@@ -6,6 +6,24 @@ void main() {
       'https://potje.tech/en/?promoId=75iOS8HDjnRcPNS00qor&type=getPromoCode';
 
   group('LinkLabData.fromMap', () {
+    test('parses a passthrough link (custom scheme, no parameters entry)', () {
+      final data = LinkLabData.fromMap({
+        'fullLink': 'myapp://open?screen=home',
+        'shortLink': 'myapp://open?screen=home',
+        'domainType': 'unrecognized',
+        'resolutionStatus': 'passthrough',
+        'isDeferred': false,
+        'matchType': 'direct',
+      });
+
+      expect(data.resolutionStatus, LinkLabResolutionStatus.passthrough);
+      expect(data.isPassthrough, isTrue);
+      expect(data.isResolved, isFalse);
+      expect(data.domainType, LinkLabDomainType.unrecognized);
+      expect(data.parameters, {'screen': 'home'});
+      expect(data.uri.scheme, 'myapp');
+    });
+
     test('maps every contract field', () {
       final data = LinkLabData.fromMap({
         'id': 'abc123',
@@ -223,6 +241,7 @@ void main() {
         'baseUrl': 'https://linklab.cc',
         'installReferrerEnabled': true,
         'pasteboardMode': 'automatic',
+        'forwardNonLinklabLinks': false,
       });
     });
 

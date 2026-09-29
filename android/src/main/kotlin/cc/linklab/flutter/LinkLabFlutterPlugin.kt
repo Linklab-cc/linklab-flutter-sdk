@@ -26,6 +26,11 @@ import java.lang.ref.WeakReference
  * - Dart -> native: `init`, `ready`, `getInitialLink`, `resolve`, `isLinkLabLink`, `checkPasteboard`
  * - native -> Dart: `onLink(map)` (only after `ready`), `onError({message, code, stackTrace})`
  *
+ * Routing: intents whose data URI is a Linklab link go to the SDK (resolved server-side). Any
+ * other data URI (other https hosts, custom schemes) is dropped, unless `forwardNonLinklabLinks`
+ * is on, in which case it is delivered to Dart unchanged with `resolutionStatus == "passthrough"`.
+ * Intents received before Dart sends `init` are queued and routed once the config is known.
+ *
  * All state is confined to the main thread: method-channel calls, activity callbacks and the
  * SDK listener are all invoked there.
  */
@@ -41,6 +46,7 @@ class LinkLabFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Ne
     private var processedLaunchActivity: WeakReference<Activity>? = null
 
     private var config: LinkLabConfig = LinkLabConfig()
+    private var forwardNonLinklabLinks = false
     private var sdkInitialised = false
     private var dartReady = false
 
@@ -155,6 +161,7 @@ class LinkLabFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Ne
                 ?: LinkLabConfig.DEFAULT_BASE_URL,
             installReferrerEnabled = args?.get("installReferrerEnabled") as? Boolean ?: true,
         )
+        forwardNonLinklabLinks = args?.get("forwardNonLinklabLinks") as? Boolean ?: false
         val sdk = linkLab ?: LinkLab.getInstance(applicationContext).also {
             it.addListener(sdkListener)
             linkLab = it
@@ -244,7 +251,11 @@ class LinkLabFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Ne
             // Requested via resolve() but the caller already timed out: keep it off the stream.
             return
         }
+        deliver(map)
+    }
 
+    /** Sends a link to Dart (or queues it until `ready`) and records it as the initial link. */
+    private fun deliver(map: Map<String, Any?>) {
         if (firstLink == null) firstLink = map
         if (initialLinkWaiters.isNotEmpty()) {
             val waiters = ArrayList(initialLinkWaiters)
@@ -257,6 +268,28 @@ class LinkLabFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Ne
         } else {
             queuedLinks.add(map)
         }
+    }
+
+    /** A non-Linklab URI, delivered as received. */
+    private fun passthroughMap(uri: Uri): Map<String, Any?> {
+        val parameters = HashMap<String, String>()
+        if (uri.isHierarchical) {
+            for (name in uri.queryParameterNames) {
+                uri.getQueryParameter(name)?.let { parameters[name] = it }
+            }
+        }
+        return mapOf(
+            "id" to null,
+            "fullLink" to uri.toString(),
+            "shortLink" to uri.toString(),
+            "domain" to uri.host?.lowercase(),
+            "domainType" to "unrecognized",
+            "parameters" to parameters,
+            "resolutionStatus" to "passthrough",
+            "errorMessage" to null,
+            "isDeferred" to false,
+            "matchType" to "direct",
+        )
     }
 
     private fun toMap(data: LinkLab.LinkData): Map<String, Any?> = mapOf(
@@ -313,13 +346,21 @@ class LinkLabFlutterPlugin : FlutterPlugin, MethodCallHandler, ActivityAware, Ne
         return processIntent(intent)
     }
 
-    /** Hands [intent] to the SDK, or queues it until Dart has called `init`. */
+    /**
+     * Routes [intent]: Linklab links go to the SDK, other URIs are forwarded to Dart when
+     * `forwardNonLinklabLinks` is on. Queued until Dart has called `init`. Returns `true` only
+     * when the SDK accepted the intent.
+     */
     private fun processIntent(intent: Intent?): Boolean {
         val uri = intent?.data ?: return false
         val sdk = linkLab ?: return false
         if (!sdkInitialised) {
             pendingIntents.add(intent)
             return sdk.isLinkLabLink(uri)
+        }
+        if (!sdk.isLinkLabLink(uri)) {
+            if (forwardNonLinklabLinks) deliver(passthroughMap(uri))
+            return false
         }
         val key = uri.toString()
         inFlight.add(key)

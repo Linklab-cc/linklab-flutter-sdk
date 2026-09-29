@@ -4,7 +4,7 @@
 #
 Pod::Spec.new do |s|
   s.name             = 'linklab_flutter_sdk'
-  s.version          = '0.3.0'
+  s.version          = '0.4.0'
   s.summary          = 'Flutter plugin for Linklab dynamic links and deferred deep linking.'
   s.description      = <<-DESC
 Flutter plugin for the Linklab deep linking service: universal links, deferred deep links

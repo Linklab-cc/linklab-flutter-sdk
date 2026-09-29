@@ -1,5 +1,6 @@
 import Flutter
 import Linklab
+import OSLog
 import UIKit
 
 /// Flutter bridge for the Linklab iOS SDK.
@@ -8,9 +9,20 @@ import UIKit
 /// - Dart -> native: `init`, `ready`, `getInitialLink`, `resolve`, `isLinkLabLink`, `checkPasteboard`
 /// - native -> Dart: `onLink(map)` (only after `ready`), `onError({message, code})`
 ///
-/// All plugin state is touched on the main thread only: Flutter invokes method-call and
-/// app-delegate callbacks there and `Linklab` is `@MainActor`.
-public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
+/// Incoming URLs are received through both lifecycles, `UIApplicationDelegate` and
+/// `UISceneDelegate` (required by Xcode 27 / the iOS 27 SDK). Flutter forwards only one of them,
+/// depending on whether the app adopted UIScene, so each URL is seen once. The scene callbacks
+/// mirror the ones in `app_links`.
+///
+/// Routing: Linklab-host URLs go to the SDK (resolved server-side). Any other URL is dropped,
+/// unless `forwardNonLinklabLinks` is on, in which case it is delivered to Dart unchanged with
+/// `resolutionStatus == "passthrough"`. Forwarded URLs are never *claimed* (the callbacks return
+/// `false`), so other plugins and the app keep receiving them. URLs received before Dart sends
+/// `init` are queued and routed once the configuration (custom domains, forwarding) is known.
+///
+/// All plugin state is touched on the main thread only: Flutter invokes method-call,
+/// app-delegate and scene-delegate callbacks there and `Linklab` is `@MainActor`.
+public class LinkLabFlutterPlugin: NSObject, FlutterPlugin, FlutterSceneLifeCycleDelegate {
   private static let channelName = "cc.linklab.flutter/linklab"
   private static let initialLinkTimeout: TimeInterval = 5
 
@@ -20,8 +32,24 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
   private var initReceived = false
   /// Custom domains from the `init` config, lower-cased; used for host checks before the SDK is ready.
   private var customDomains: [String] = []
+  private var forwardNonLinklabLinks = false
+  private var debugLoggingEnabled = false
   private var networkTimeout: TimeInterval = 10
+
+  /// os_log output (subsystem `cc.linklab.flutter`), only when `debugLoggingEnabled`. Query strings
+  /// are never logged.
+  private static let log = Logger(subsystem: "cc.linklab.flutter", category: "LinkLabFlutterPlugin")
+  private func debug(_ message: String) {
+    guard debugLoggingEnabled else { return }
+    Self.log.debug("\(message, privacy: .public)")
+  }
+  private static func describe(_ url: URL) -> String {
+    "\(url.scheme ?? "?")://\(url.host ?? "")\(url.path)"
+  }
   private var networkRetryCount = 3
+
+  /// URLs received before `init`; routed by `flushPendingURLs()` once the config is known.
+  private var pendingURLs: [URL] = []
 
   private var dartReady = false
   private var queuedLinks: [[String: Any]] = []
@@ -56,20 +84,20 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
     let channel = FlutterMethodChannel(name: channelName, binaryMessenger: registrar.messenger())
     let instance = LinkLabFlutterPlugin(channel: channel)
     registrar.addMethodCallDelegate(instance, channel: channel)
+    // Both lifecycles: Flutter calls the application-delegate methods for apps that have not
+    // adopted UIScene and the scene-delegate methods for apps that have (never both).
     registrar.addApplicationDelegate(instance)
+    registrar.addSceneDelegate(instance)
   }
 
-  // MARK: - FlutterApplicationLifeCycleDelegate
+  // MARK: - FlutterApplicationLifeCycleDelegate (apps without UIScene)
 
   public func application(
     _ application: UIApplication,
     continue userActivity: NSUserActivity,
     restorationHandler: @escaping ([Any]) -> Void
   ) -> Bool {
-    guard userActivity.activityType == NSUserActivityTypeBrowsingWeb,
-          let url = userActivity.webpageURL else {
-      return false
-    }
+    guard let url = userActivity.webpageURL else { return false }
     return handleIncomingURL(url)
   }
 
@@ -78,18 +106,81 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
-    // Custom URL schemes are not Linklab links; leave them to other plugins.
+    // Custom URL schemes are never Linklab links; forwarded to Dart only when configured.
+    return handleIncomingURL(url)
+  }
+
+  // MARK: - FlutterSceneLifeCycleDelegate (apps with UIScene)
+
+  /// Cold start: the launch URL / universal link arrives in the connection options.
+  public func scene(
+    _ scene: UIScene,
+    willConnectTo session: UISceneSession,
+    options connectionOptions: UIScene.ConnectionOptions?
+  ) -> Bool {
+    guard let options = connectionOptions else { return false }
+    var claimed = false
+    for context in options.urlContexts {
+      claimed = handleIncomingURL(context.url) || claimed
+    }
+    for userActivity in options.userActivities {
+      if let url = userActivity.webpageURL {
+        claimed = handleIncomingURL(url) || claimed
+      }
+    }
+    return claimed
+  }
+
+  /// Custom URL schemes while running.
+  public func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) -> Bool {
+    var claimed = false
+    for context in URLContexts {
+      claimed = handleIncomingURL(context.url) || claimed
+    }
+    return claimed
+  }
+
+  /// Universal links while running.
+  public func scene(_ scene: UIScene, continue userActivity: NSUserActivity) -> Bool {
+    guard let url = userActivity.webpageURL else { return false }
+    return handleIncomingURL(url)
+  }
+
+  // MARK: - URL routing
+
+  /// Routes a URL the app received.
+  ///
+  /// Returns `true` only when the URL is claimed by this plugin (a Linklab host, handed to the
+  /// SDK). Non-Linklab URLs return `false` whether or not they are forwarded to Dart, so that
+  /// Flutter still offers them to other plugins. Before `init` the URL is queued and the return
+  /// value reflects only the built-in hosts, because custom domains are not known yet.
+  @discardableResult
+  private func handleIncomingURL(_ url: URL) -> Bool {
+    guard initReceived else {
+      pendingURLs.append(url)
+      return isLinklabHost(url)
+    }
+    if isLinklabHost(url) {
+      debug("Handing Linklab URL to the SDK: \(Self.describe(url))")
+      runOnMain {
+        Linklab.shared.handleIncomingURL(url)
+      }
+      return true
+    }
+    if forwardNonLinklabLinks {
+      debug("Forwarding non-Linklab URL to Dart as passthrough: \(Self.describe(url))")
+      deliver(passthroughMap(for: url))
+    } else {
+      debug("Dropping non-Linklab URL (forwardNonLinklabLinks is off): \(Self.describe(url))")
+    }
     return false
   }
 
-  /// Returns `true` (and forwards the URL to the SDK) only for Linklab hosts. Before the SDK is
-  /// initialized the SDK queues the URL itself.
-  private func handleIncomingURL(_ url: URL) -> Bool {
-    guard isLinklabHost(url) else { return false }
-    runOnMain {
-      Linklab.shared.handleIncomingURL(url)
-    }
-    return true
+  private func flushPendingURLs() {
+    let pending = pendingURLs
+    pendingURLs = []
+    if !pending.isEmpty { debug("Routing \(pending.count) URL(s) received before init") }
+    pending.forEach { handleIncomingURL($0) }
   }
 
   /// Contract rule 1 with the custom domains known to the plugin (from `init`), so links on
@@ -165,6 +256,8 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
     }
 
     customDomains = domains
+    forwardNonLinklabLinks = (args["forwardNonLinklabLinks"] as? Bool) ?? false
+    debugLoggingEnabled = debug
     networkTimeout = timeout
     networkRetryCount = max(0, retries)
     initReceived = true
@@ -179,6 +272,7 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
     )
 
     Task { @MainActor [weak self] in
+      guard let self else { return }
       Linklab.shared.onLink = { [weak self] link in
         self?.onLinkDelivered(link)
       }
@@ -189,6 +283,8 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
         )
       }
       Linklab.shared.initialize(with: configuration)
+      // URLs that arrived before `init` (cold start): route them now that the config is known.
+      self.flushPendingURLs()
       result(true)
     }
   }
@@ -244,13 +340,32 @@ public class LinkLabFlutterPlugin: NSObject, FlutterPlugin {
       // Requested via resolve() but the caller already timed out: keep it off the stream.
       return
     }
+    deliver(map)
+  }
 
+  /// Sends a link to Dart (or queues it until `ready`) and records it as the initial link.
+  private func deliver(_ map: [String: Any]) {
     if firstLink == nil { firstLink = map }
     if dartReady {
       channel.invokeMethod("onLink", arguments: map)
     } else {
       queuedLinks.append(map)
     }
+  }
+
+  /// A non-Linklab URL, delivered as received. Dart derives `parameters` from `fullLink`.
+  private func passthroughMap(for url: URL) -> [String: Any] {
+    var map: [String: Any] = [
+      "fullLink": url.absoluteString,
+      "shortLink": url.absoluteString,
+      "domainType": "unrecognized",
+      "parameters": [String: String](),
+      "resolutionStatus": "passthrough",
+      "isDeferred": false,
+      "matchType": "direct",
+    ]
+    if let host = url.host?.lowercased(), !host.isEmpty { map["domain"] = host }
+    return map
   }
 
   private func toMap(_ link: LinkData) -> [String: Any] {
